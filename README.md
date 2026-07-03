@@ -8,7 +8,10 @@ twelve weekly check-ins (T1a–T6b) for the two active arms.
 **This repository contains code and documentation only. It does not contain
 participant data.** Data is stored separately (see "Getting the data" below).
 
-Attribution. Data collection, cleaning, scoring, and compilation were carried out by Morgan Healey (morgan_healey@alumni.brown.edu) under the supervision of PI Michael Ferguson (mferguson@bwh.harvard.edu). Any use of this work or the associated data must cite them accordingly.
+**Attribution.** Data collection, cleaning, scoring, and compilation were carried
+out by Morgan Healey (morgan_healey@alumni.brown.edu) under the supervision of PI
+Michael Ferguson (mferguson@bwh.harvard.edu). Any use of this work or the
+associated data must cite them accordingly.
 
 ---
 
@@ -22,7 +25,7 @@ Final Repo/
     02_create_composites.R     scores the psychological scales -> outcome composites
     03_weekly_processing.R     weekly check-in processing, affect composites,
                                attrition matrix, adherence measure
-    flow_diagram.R             CONSORT flow diagram
+    flow_diagram.R             CONSORT flow diagram (run last — see below)
   Documentation/
     01_cleaning_decisions.Rmd
     02_composites_decisions.Rmd
@@ -45,12 +48,11 @@ their contents are git-ignored.
 **Participant data is not stored in this repository.** It is stored in the
 project's BWH Dropbox folder. Collaborators are given access to that folder
 directly (by institutional account); if you need access, contact:
-mhealey@bwh.harvard.edu
-mferguson@bwh.harvard.edu
+mhealey@bwh.harvard.edu or mferguson@bwh.harvard.edu.
 
 Once you have Dropbox access, download the files and place them into the local
-folder that matches each file's **type**, so the scripts find them via here().
-Doing so will allow the scripts to run as written with their file paths.
+folder that matches each file's **type**, so the scripts run as written with
+their file paths (which resolve via here()).
 
 | File type | Destination folder in the repo |
 |-----------|--------------------------------|
@@ -59,8 +61,8 @@ Doing so will allow the scripts to run as written with their file paths.
 | Condition assignment CSVs (Control, HP, LK) | Group assignments/ |
 
 The administered survey instruments (e.g. the official intake questionnaire) are
-in the Dropbox; they are the ground-truth reference for verifying scale
-scoring against what participants actually saw.
+in the Dropbox; they are the ground-truth reference for verifying scale scoring
+against what participants actually saw.
 
 After the data folders are populated, open Hesychastic Prayer.Rproj in RStudio
 and run the scripts in order.
@@ -77,7 +79,7 @@ The scripts must be run in order — each depends on the previous one's output.
 1. **01_cleaning.R** reads the raw intake/outtake SAV files and the condition
    assignment CSVs, and writes the cleaned analytic sample to
    Outputs/1_cleaned_hp_dataR.rds (N = 484: HPrayer 194, LovingKindness 193,
-   Control 97).
+   Control 97). It also writes Outputs/flow_counts.rds (CONSORT counts).
 
 2. **02_create_composites.R** reads script 1's output, scores the outcome
    scales, and writes Outputs/02_cleaned_data_with_composites.rds (the cleaned
@@ -93,16 +95,22 @@ The scripts must be run in order — each depends on the previous one's output.
    - attrition_matrix.rds — weekly completion (1/0) per participant per week
    - weekly_scored.rds — the per-week scored tables (a list)
 
-Each script has a companion decisions document in Documentation/ recording the
-methodological choices and their rationale.
+**Figure generation (run last):** flow_diagram.R produces the CONSORT flow
+diagram. It reads outputs from *both* 01_cleaning.R (flow_counts.rds) and
+03_weekly_processing.R (attrition_matrix.rds), so run it after scripts 1–3.
+Output: Diagrams/consort_flow.pdf and .png.
+
+Each pipeline script has a companion decisions document in Documentation/
+recording the methodological choices and their rationale.
 
 ---
 
 ## Requirements
 
-- R (version 2026.06.0+242)
+- R (version 4.4.2)
 - Packages: haven, readxl, readr, dplyr, tidyr, stringr, purrr, here, ggplot2,
-  afex, emmeans. (The tidyverse is loaded as individual packages, not the bundle.)
+  afex, emmeans, consort. (The tidyverse is loaded as individual packages, not
+  the bundle.)
 - All file paths use here() and resolve relative to the project root, so open
   the project via Hesychastic Prayer.Rproj (or set the working directory to the
   project root) before running anything.
