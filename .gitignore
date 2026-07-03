@@ -1,0 +1,39 @@
+# ============================================================================
+# .gitignore — Hesychastic Prayer RCT
+# Keeps ALL participant data out of the repository. Code and docs only.
+# ============================================================================
+
+# ---- Data files (never commit participant data) ---------------------------
+*.sav
+*.xlsx
+*.xls
+*.csv
+*.rds
+*.RData
+*.rda
+
+# ---- Data folders: keep structure, ignore contents ------------------------
+SAV files/**
+!SAV files/
+!SAV files/**/.gitkeep
+
+Excels/**
+!Excels/
+!Excels/**/.gitkeep
+
+Group assignments/**
+!Group assignments/
+!Group assignments/**/.gitkeep
+
+Outputs/**
+!Outputs/
+!Outputs/.gitkeep
+
+# ---- R / RStudio session cruft --------------------------------------------
+.Rproj.user/
+.Rhistory
+.Ruserdata
+
+# ---- OS cruft -------------------------------------------------------------
+.DS_Store
+Thumbs.db
