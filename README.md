@@ -8,6 +8,8 @@ twelve weekly check-ins (T1a–T6b) for the two active arms.
 **This repository contains code and documentation only. It does not contain
 participant data.** Data is stored separately (see "Getting the data" below).
 
+Attribution. Data collection, cleaning, scoring, and compilation were carried out by Morgan Healey (morgan_healey@alumni.brown.edu) under the supervision of PI Michael Ferguson (mferguson@bwh.harvard.edu). Any use of this work or the associated data must cite them accordingly.
+
 ---
 
 ## Repository structure
