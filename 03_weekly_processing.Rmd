@@ -1,0 +1,168 @@
+---
+title: "Hesychastic Prayer RCT — Weekly Processing Decisions"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: united
+  pdf_document:
+    toc: true
+---
+
+This document records the methodological decisions made in the weekly-processing portion (`03_weekly_processing.R`) of the Hesychastic Prayer RCT pipeline. It is the companion to the cleaning- and composite-decisions documents and follows the same structure. The script processes the 24 weekly check-in files (T1a–T6b for the two active arms), scores the weekly affect battery, assembles a participant-level wide table, builds the attrition/participation matrix, and derives a per-participant adherence measure joined to the cleaned outcome data.
+
+Created by Morgan Healey (morgan_healey@alumni.brown.edu)
+
+# 0. Configuration and inputs
+
+The script reads two sets of source files: the 22 weekly SAV exports (T1b–T6b for both arms) from `SAV files/Weekly/`, and the two T1a XLSX exports from `Excels/Weekly/`. It also reads the composite dataset produced by `02_create_composites.R` (`02_cleaned_data_with_composites.rds`), which supplies both the condition assignments and the scored T1/T2 outcome variables (to which the adherence measure is joined in §7). All paths are defined relative to the project root via `here()`. The script therefore depends on both `01_cleaning.R` and `02_create_composites.R` having been run.
+
+The weekly design comprises two session types per week. **a-sessions** (T1a–T6a) contain a 10-minute audio teaching plus environment, distraction, and alternative-task items. **b-sessions** (T1b–T6b) contain an audio practice plus the pre- and post-practice affect battery. The two session types are distinct administrations with non-overlapping response IDs. Only the two active arms (HPrayer, LovingKindness) have weekly check-ins. Control does not.
+
+## Note: Missing data — `na.rm = FALSE` throughout
+
+As in the composite-scoring script, every `rowMeans()` call used to score the weekly affect battery uses `na.rm = FALSE`, so any missing item propagates to a missing composite. 
+
+**Why.** The weekly surveys were force-complete: a respondent who reached the affect battery answered all of its items. An `NA` in a scored item indicates a data-integrity problem — a linkage or export fault — not a legitimate skip. This mirrors the stance taken throughout the cleaning and composite stages.
+
+# 1. Reading and reconstructing the source files
+
+## 1.1 The completion flag (`Finished`) is normalized to 0/1 on read
+
+Across the source files the `Finished` variable appears in several encodings: numeric `1`/`0` in the SAV exports, the character strings `"1"`/`"0"` in one XLSX export, and the character strings `"TRUE"`/`"FALSE"` in the other. A helper (`to_binary`) maps all recognized encodings to numeric `0`/`1` and maps anything unrecognized to `NA`.
+
+**Why.** The mixed encodings are an artifact of the two export formats (SAV vs XLSX) and of Qualtrics' inconsistent serialization of the boolean field. Normalizing on read means every downstream operation on `Finished` — the duration floor, the completion counts, the attrition matrix — can assume a clean 0/1 numeric without repeating the coercion. Normalization is applied *before* any numeric coercion of other columns, because a naïve `as.numeric("TRUE")` returns `NA` and would silently destroy the completion flag in the affected file.
+
+## 1.2 T1a is read from XLSX rather than SAV
+
+The T1a check-in has no standalone SAV export (a Qualtrics download issue at the time of collection), so it is read from XLSX. The XLSX reader (`read_t1a`) drops the first row (Qualtrics places question text, not data, in that row), normalizes `Finished`, and coerces the survey-answer columns from text to numeric.
+
+**Why coerce by reference to the SAV twin.** XLSX files read in as all-text, so the reader must decide which columns are genuinely numeric (survey answers) versus legitimately text (participant IDs, response IDs, timestamps). Rather than hard-code a list, the reader consults the matching-arm T1b SAV file — which carries correct types — and coerces a T1a column to numeric only if its counterpart in the SAV twin is numeric. The SAV twin is used solely as a type reference; no values or labels are copied from it.
+
+## 1.3 Column-name standardization and metadata drops
+
+Each weekly file's participant-ID column (which varies in casing across files: `participantId`, `participantID`, `ParticipantID`) is renamed to `participantId`, its duration column to `Duration`, and a set of Qualtrics administrative columns (IP address, recipient fields, geolocation, distribution channel, etc.) is dropped. Rows with a blank or missing `participantId` are captured to a diagnostic object (`empty_ids`) before being dropped.
+
+**Why capture blank IDs first.** An unattributable response cannot be linked to the condition roster and is excluded from all weekly objects, but recording these rows before dropping them preserves an audit trail of how many unattributable responses occurred per week.
+
+# 2. Source-data correction
+ 
+## 2.1 Excel corruption of `ENVMT1a`
+
+The `ENVMT1a` item ("how many other people are in the room") is a three-level categorical scored `1`/`2`/`3` with response labels "0", "1-5", and "5+". In the standalone T1a XLSX exports, Excel had auto-converted the "1-5" response into the date serial `45662`, and had stored the "0" response as the literal number `0` rather than its code. The "5+" response survived as text. This is a common spreadsheet failure: Excel interprets strings such as "1-5" as dates.
+
+**Correction.** The mangled value `45662` is restored to the text "1-5", and the recovered text responses are re-coded to their numeric codes using the value-label key from a clean SAV a-session (`ENVMT2a`), then re-attached as a labeled variable matching the other a-sessions. Recovery was verified against the original category counts (T1a-HP: 164 / 15 / 1; T1a-LK: 164 / 9 / 3), which were preserved exactly.
+ 
+# 3. Deduplication and the completion rule
+
+## 3.1 Deduplication within participant
+
+Within each weekly file, if a participant has more than one row, the completed row is kept first, then the earliest `StartDate`, and the first row is retained (`arrange(participantId, desc(Finished), StartDate) |> distinct(participantId, .keep_all = TRUE)`).
+
+**Why.** This mirrors the deduplication rule established in the cleaning script: a completed response is preferred over an incomplete one, and among ties the earliest submission is taken as the participant's intended response. Later rows typically represent reloads or resubmissions.
+
+## 3.2 The completion duration floor is 590 seconds
+
+A weekly response is counted as complete only if `Finished == 1` **and** its duration is at least 590 seconds; sub-590 responses have `Finished` recoded to `0` (they are not deleted, only reclassified as non-completions).
+
+**Why a duration floor at all.** The intervention is a 10-minute (600-second) audio practice, delivered on a page whose "Next" button appears approximately five seconds before the audio ends. A response completed in materially less than 600 seconds cannot have included the full audio practice, so duration is the operative evidence that the practice was actually delivered. Because the surveys are force-complete, every submitted response has all items answered; duration is therefore the sole remaining completion gate.
+
+**Why 590 rather than 600.** The audio is a 600-second hard timer, but two features push legitimate completion durations slightly below 600. First, the "Next" button appears roughly five seconds before the audio ends, so a participant who advances at the first opportunity registers a duration near 595 seconds. Second, Qualtrics duration measurement carries a few seconds of slack. Empirically, the sub-600 responses cluster tightly at 595–599 seconds (of seventeen such a-session responses, sixteen fell at 595 or above, six at exactly 599), consistent with genuine completion logged fractionally short rather than with rushing. A 590-second floor — a ten-second tolerance below the 600-second audio length — admits these near-wall completions while still excluding responses too short to contain the practice. The duration distribution confirms the audio length independently: the a-session second percentile sits at exactly 600.0 seconds, the signature of a hard 600-second timer.
+
+**Why the floor applies uniformly across session types.** Both a- and b-sessions contain audios of 10-minute lengths; the b-sessions are longer only because they add the affect battery. Both session types therefore warrant the same 590-second floor. In practice the floor only reclassifies a-session responses, because b-session durations (audio plus questionnaire) all exceed 614 seconds and never approach the floor.
+
+**Reporting.** Non-completion produced by the floor is not deleted but recoded, so it remains visible in the participation matrix (§5) as a `0` cell.
+
+# 4. Weekly affect composites
+
+The b-sessions carry a 27-item affect battery administered both before (PRE) and after (POST) the practice. The 27 items are a concatenation of four distinct constructs, identified against source instruments and confirmed by inter-item correlations in the study's own data. Each construct is scored as the mean of its items with `na.rm = FALSE`, on the common 1–5 response metric.
+
+## 4.1 Block structure and its empirical confirmation
+
+The four blocks are:
+
+1. **Gratitude / Indebtedness** (items 1–3). Item 1 (Grateful) is a single gratitude item; items 2–3 are two indebtedness items ("obligated to repay", "desire to repay").
+2. **Positive Affect** (items 4–11) — an eight-item reduced set of the PANAS-X Positive Affect scale (Watson & Clark, 1999), omitting the standard "alert" and "excited".
+3. **Negative Affect** (items 12–21) — the ten-item PANAS-X Negative Affect scale.
+4. **Empathic Concern** (items 22–27) — the six adjectives of the Batson Empathic Concern scale (sympathetic, warm, compassionate, soft-hearted, tender, moved).
+
+**Why Grateful is kept as a single raw item rather than pooled with indebtedness.** Gratitude and indebtedness are distinct — indeed partly opposing — constructs in the literature, and the study's own data confirm the dissociation: item 1 correlates only r ≈ .16–.25 with the two indebtedness items, while the two indebtedness items cohere at r = .65. Averaging all three would blend a weakly related item into an otherwise coherent pair. Item 1 is therefore reported as a single-item gratitude measure, and items 2–3 form a two-item Indebtedness composite.
+
+**Why the four blocks are scored separately.** Each block's items cohere internally and map to a distinct source instrument. In the study data the Empathic Concern items correlate r ≈ .53–.68 with one another; the PANAS Positive and Negative Affect blocks each cohere at the levels expected of those scales. The battery is thus four constructs concatenated into one Qualtrics block, and is scored as four constructs.
+
+**Note — reduced Positive Affect set.** The Positive Affect block administers eight of the ten standard PANAS-X Positive Affect items (missing "alert" and "excited"). It should be described as an eight-item reduced Positive Affect composite, not as the full PANAS-X Positive Affect scale, and comparisons to published norms should account for the reduced length.
+
+## 4.2 Means rather than sums
+
+Each composite is the mean of its items rather than the sum.
+
+**Why.** The four blocks differ in length (1, 2, 8, 10, and 6 items), and means keep them on the common 1–5 response metric so they are directly comparable, whereas sums would place them on incommensurable ranges. The mean also pairs cleanly with `na.rm = FALSE`: any missing item yields a missing composite.
+
+## 4.3 Per-week column naming
+
+The PANAS column names carry the session number (`PREPANAS2b_`, `PREPANAS3b_`, …), so the scoring function builds the column stem per week from the table name rather than assuming a fixed stem. Each b-session receives ten new composites: five constructs × PRE/POST.
+
+# 5. Wide table, condition tagging, and sample filtering
+
+## 5.1 Wide-table construction
+
+The scored weekly tables are joined into a single participant-level wide table (`weekly_wide`), one row per participant, with each week's composites and a-session content carried as separate columns tagged by session (e.g. `PRE_PA_T2b`). The session tag is retained in the column name so that the same measure at different weeks remains distinct.
+
+**Why a minimal column set.** The wide table carries the composites and the a-session content items (environment, distraction, alternative task) plus identifiers, rather than every raw item. The raw items are preserved in the per-week scored objects (`weekly_scored`) for any item-level work; the wide table is scoped to the variables used in cross-week analysis.
+
+## 5.2 Condition is taken from the cleaned roster, not the weekly filenames
+
+Each participant's condition is assigned by joining the composite dataset (`02_cleaned_data_with_composites.rds`, which carries the condition column through from `01_cleaning.R`), not by parsing the arm from the weekly filename.
+
+**Why.** That dataset is the authoritative, post-QC record of who is in which arm; it reflects the eligibility screening, duplicate-assignment removal, and quality control applied in `01_cleaning.R`, and it is also the source of the outcome composites the weekly data is analyzed against, so using it as the condition source keeps the weekly sample aligned with the outcome sample.  
+
+## 5.3 Participants absent from the cleaned sample are dropped
+
+Fifteen participants had weekly data but no condition in the cleaned roster. All fifteen are dropped from every weekly object (`weekly_wide`, `weekly_scored`, `weekly_dedup`), yielding an analytic weekly sample of 379.
+
+**Why.** The fifteen resolve into three groups, established by joining them to the raw randomization roster and tracing them through the cleaning pipeline: three were never randomized to any condition; one had been assigned to two conditions (a duplicate-assignment error that the cleaning script removes); and eleven were properly randomized but excluded from the analytic sample by T1/T2 quality control (T2 non-completion, T2 attention-check failure, response duration, or duplicate flags). Examination of the eleven confirmed that none were excluded for reasons connected to their weekly data — every exclusion was a T1/T2 quality issue. Because the weekly analyses connect to the T1/T2 outcomes, retaining participants who are not in the T1/T2 analytic sample would produce a weekly sample inconsistent with every analysis the weekly data feeds. All fifteen are therefore dropped to maintain a single analytic sample.
+
+**Alternative considered.** Retaining the eleven randomized-but-QC-excluded participants for weekly-only analyses was rejected: because the weekly composites are analyzed in relation to T1/T2 outcomes, a participant with no valid T2 cannot contribute to those analyses regardless, and admitting them would create a divergent weekly N requiring separate justification.
+
+**Reporting.** The composition of the fifteen (never-randomized, double-assigned, QC-excluded) is recorded in the script comments, and the drop is verified to leave zero unmatched participants and one row per participant across all weekly objects.
+
+# 6. Attrition / participation matrix
+
+## 6.1 The matrix and its spine
+
+The participation matrix (`attrition`) has one row per enrolled treatment participant and one column per timepoint (T1a–T6b), with each cell equal to `1` if the participant completed the practice that week and `0` otherwise. The row spine is the full treatment-arm roster (all 387 HPrayer and LovingKindness participants from the cleaned dataset), joined to the per-week completion records; participants with no record for a given week receive `0` for that week.
+
+**Why the roster is the spine rather than the observed weekly data.** Building the matrix from the observed weekly data alone would make non-participants invisible — a participant who never began the weekly protocol would simply be absent, and the attrition denominator would silently shrink to those who engaged at least once. Anchoring on the enrollment roster keeps every enrolled treatment participant in the matrix, so that the eight participants who never completed a single weekly session appear as all-zero rows. Those never-starters are the most extreme attrition cases and must be represented for the participation counts to be honest.
+
+**Why Control is excluded.** Control participants were not assigned the weekly practice and have no check-in files, so they are not part of the participation denominator.
+
+## 6.2 A binary (completed / not completed) cell rather than a graded state
+
+Each cell is binary: the practice was completed that week, or it was not. A participant who opened a weekly survey but did not complete the 10-minute practice (a sub-590-second, `Finished = 0` record) is scored identically to one who never opened it — both are `0`.
+
+**Why.** The practice itself is the intervention. A session in which the audio was not completed delivered no dose, so for the purpose of measuring participation it is equivalent to a session that was never begun. A graded "started but did not finish" state was considered and rejected: it does not correspond to a difference in dose delivered, and it would complicate the participation measure without adding intervention-relevant information.
+
+## 6.3 The week-3 HPrayer dip
+
+The participation curve declines gently and is broadly comparable across arms, with one notable feature: a dip at the week-3 a-session (T3a) concentrated in the HPrayer arm. This was investigated rather than assumed. The dip comprises HPrayer participants whose T3a session was recorded too short to have contained the practice, with durations scattered from 9 seconds to roughly 6 minutes. The scatter of durations rules out a technical failure (a broken audio file would produce uniformly short times), and the same-week LovingKindness arm was unaffected. Of the affected participants in the analytic sample, all but one had otherwise completed ten or eleven of the twelve weekly sessions, and none successfully completed a later re-attempt of the week-3 session — indicating a week-specific lapse among otherwise-reliable participants rather than a disengaging subgroup or a data artifact. The dip is retained as a genuine feature of the data.
+
+# 7. Adherence measure
+
+## 7.1 Per-participant adherence
+
+A per-participant adherence measure is derived from the participation matrix as the number of weeks completed (0–12) and the corresponding percentage, and joined onto the composite outcome dataset (`02_cleaned_data_with_composites.rds`) so that the resulting table (`03_outcomes_with_adherence`) carries the scored T1/T2 outcomes and adherence together, and outcome analyses can be conditioned on how much of the practice each participant actually completed.
+
+**Why join adherence to the outcome data.** Weekly practice adherence varies across participants, and any outcome comparison should be interpretable in light of the dose actually delivered. Carrying adherence alongside the outcome variables allows it to be used as a covariate, a moderator (a within-arm dose–response), or the basis for a completer sensitivity analysis.
+
+## 7.2 Control and never-starters: `NA` versus `0`
+
+Treatment participants who were enrolled but completed no weekly sessions receive an adherence of `0`. Control participants receive `NA`.
+
+**Why the asymmetry.** A `0` means "completed none of a practice that was assigned," which is the correct value for a treatment participant who never engaged. Control was never assigned the weekly practice, so adherence is undefined for them, not zero; coding Control as `0` would wrongly imply they failed to adhere to a practice they were never offered, and would distort any mean or model that included them. `NA` correctly excludes Control from adherence computations while leaving them in the outcome dataset for the primary intention-to-treat comparisons.
+
+**Note — adherence is not randomized.** Adherence reflects participant behavior, not random assignment, so adherence-conditioned analyses (dose–response, completer analyses) are correlational and potentially confounded by the characteristics that drive both adherence and outcome. They complement, and do not replace, the intention-to-treat comparison across the randomized arms. In this study adherence was high and closely matched across the two active arms (HPrayer ≈ 86%, LovingKindness ≈ 86%), so the primary arm comparison is not materially threatened by differential adherence.
+
+# 8. Saved outputs
+
+The script writes four objects to `Outputs/`: the outcome dataset with adherence attached (`03_outcomes_with_adherence`), the participant-level wide table (`weekly_wide`), the participation matrix (`attrition_matrix`), and the per-week scored list (`weekly_scored`). RDS is used for all four to preserve types, value labels, and the list structure of `weekly_scored`; flat CSVs are additionally written for the two rectangular tables for inspection and sharing, with the understanding that CSV does not preserve value-label attributes.

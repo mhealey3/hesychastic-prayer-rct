@@ -1,0 +1,211 @@
+---
+title: "Hesychastic Prayer RCT — Composite Scoring Decisions"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: united
+  pdf_document:
+    toc: true
+---
+
+This document records the methodological decisions made in the composite-scoring portion (`02_create_composites.R`) of the Hesychastic Prayer RCT pipeline. It is the companion to the cleaning-decisions document and follows the same structure: each scale is described in the order it is scored in the script, with the scoring choices stated and the non-obvious ones justified. Items are referenced by their post-cleaning names; renaming corrections applied upstream are documented in the cleaning-decisions document and noted here only where they bear on scoring.
+
+Created by Morgan Healey (morgan_healey@alumni.brown.edu)
+
+# 0. Configuration and inputs
+
+The script loads the cleaned dataset produced by `01_cleaning.R` via `readRDS(here("cleaned_hp_dataR.rds"))`, scores each scale in turn, and writes a single enriched object, `cleaned_data_with_composites`, in three formats. Every composite is inserted immediately after its source items with `.after = …`, so each scored variable sits beside the items it summarizes rather than at the end of the frame.
+
+Composites are created in accordance with cited literature.
+
+## Note: Missing data — `na.rm = FALSE` throughout
+
+Every `rowMeans()` and `rowSums()` call uses `na.rm = FALSE`, so any missing item propagates to a missing composite rather than being averaged over the items that are present.
+
+**Why.** The survey was force-complete: a respondent who reached a scale answered all of its items. An `NA` in a scored item therefore indicates a data-integrity problem — a linkage or export fault — not a legitimate skip. Forcing the composite to `NA` in that case keeps the problem visible for diagnosis instead of silently producing a score from a partial item set. This mirrors the cleaning-stage stance that `NA` is never a benign value in this dataset.
+
+# 1. Beauty — Engagement with Beauty Scale (Diessner et al., 2008)
+
+**Source.** Diessner, R., Solom, R. C., Frost, N. K., Parsons, L., & Davidson, J. (2008). Engagement with beauty: Appreciating natural, artistic, and moral beauty. *The Journal of Psychology*, 142(3), 303–329. https://doi.org/10.3200/JRLP.142.3.303-332
+
+**Scoring.** Items are partitioned into three content domains scored as sums: Natural Beauty (items 1–4, range 4–28), Artistic Beauty (items 5–8, range 4–28), and Moral Beauty (items 9–14, range 6–42). The total is the sum across all 14 items (range 14–98).
+
+# 2. Flourishing — Secure Flourishing Measure (VanderWeele, 2017)
+
+**Source.** VanderWeele, T. J. (2017). On the promotion of human flourishing. *Proceedings of the National Academy of Sciences*, *114*(31), 8148–8156. https://doi.org/10.1073/pnas.1702996114
+
+VanderWeele's measure has 12 items rated 0–10 across six two-item domains: Happiness & Life Satisfaction (HLS), Mental & Physical Health (MHPH), Meaning & Purpose (MP), Character & Virtue (CV), Close Social Relationships (CSR), and Financial & Material Stability (FMS). Each domain is scored as the sum of its two items (range 0–20). The **Flourishing index** is the sum of the first five domain sums (10 items, range 0–100); the **Secure Flourishing index** adds the FMS domain (12 items, range 0–120). No items are reverse-scored. Items 1–10 in domains 1–5 match the published Appendix verbatim, and the response anchors match VanderWeele's anchors per domain.
+
+**Scoring.** VanderWeele (2017) specifies the scoring explicitly in the Appendix (p. 8153): "The 'Flourish' measure is obtained by summing the scores from each of the first five domains. The 'Secure Flourish' measure is obtained by summing the scores from all six domains including the financial and material stability domain." Summing rather than averaging preserves the published score ranges (0–100 for Flourishing, 0–120 for Secure Flourishing) and keeps the composites comparable to other implementations of the scale.
+
+**Note — item wording deviation on FL_MP_1.** One of the twelve items is slightly reworded from the published version. VanderWeele's wording for the first Meaning & Purpose item is "Overall, to what extent do you feel the things *you do* in your life are worthwhile?"; the administered version omits "you do" and reads "Overall, to what extent do you feel the things in your life are worthwhile?" This is the OECD/UK ONS worthwhile-life question that VanderWeele drew from, and the administered phrasing slightly broadens the referent from active engagement ("things you do") to passive circumstance ("things in your life"). The item is retained without modification, but this deviation should be acknowledged in any methods section that claims verbatim use of VanderWeele's measure. The other eleven items are exact matches (FL_MHPH_2 prepends "In general," to keep the two MHPH items parallel; this is treated as immaterial).
+
+# 3. Anxiety — GAD-7 (Spitzer et al., 2006)
+
+**Source.** Spitzer, R. L., Kroenke, K., Williams, J. B. W., & Löwe, B. (2006). A brief measure for assessing generalized anxiety disorder: The GAD-7. *Archives of Internal Medicine*, *166*(10), 1092–1097. https://doi.org/10.1001/archinte.166.10.1092
+
+**Scoring.** The seven GAD-7 items are summed to `ANXIETY_T1/T2` with no reverse scoring (range 0–21). Severity bands: 0–4 minimal, 5–9 mild, 10–14 moderate, 15–21 severe. Response anchors run 0 (*Not at all*) to 3 (*Nearly every day*), confirmed against the instrument. The GAD-7 functional-impairment follow-up item (administered as `GAD2_T1/T2`) is intentionally not summed into the total; in Spitzer's protocol it is reported separately as a measure of functional impact.
+
+# 4. Depression — BDI Short Form (Beck & Beck, 1972)
+
+**Source.** Beck, A. T., & Beck, R. W. (1972). Screening depressed patients in family practice: A rapid technique. *Postgraduate Medicine*, *52*(6), 81–85. https://doi.org/10.1080/00325481.1972.11713319
+
+**Secondary source.** Beck, A. T., Steer, R. A., & Brown, G. K. (1996). *Manual for the Beck Depression Inventory–II*. San Antonio, TX: Psychological Corporation. (Wording for items 3, 5, 8, 9; two-week response timeframe.)
+
+**Scoring.** The 13 items are summed to `DEPRESSION_T1/T2` with no reverse scoring (range 0–39). Each item presents four graded self-evaluative statements scored 0 (neutral) to 3 (maximum severity). Severity bands per Beck & Beck (1972): 0–4 none/minimal, 5–7 mild, 8–15 moderate, 16+ severe.
+
+**Note — hybrid administration.** The 13-item *set* matches Beck & Beck (1972) exactly: items 1, 2, 3, 4, 5, 7, 9, 12, 13, 14, 15, 17, and 18 of the parent 21-item BDI. The *wording* of individual items is mixed: items 1, 2, 4, 6, 7, 10, 11, 12, and 13 use the original BDI wording from Beck & Beck (1972); items 3 (Past Failure), 5 (Guilty Feelings), 8 (Loss of Interest), and 9 (Indecisiveness) use BDI-II wording. The two-week response timeframe is also BDI-II rather than the short form's original one-week window. Scoring is unaffected by these wording differences, but the methods section should describe the instrument as a 13-item BDI short form using the item set of Beck & Beck (1972) with some item wording updated to BDI-II (Beck, Steer, & Brown, 1996), rather than as a verbatim Beck & Beck (1972) administration.
+
+# 5. Sleep — Disturbances Composite (Buysse et al., 1989; PSQI items 5b–5j)
+
+**Source.** Buysse, D. J., Reynolds, C. F., Monk, T. H., Berman, S. R., & Kupfer, D. J. (1989). The Pittsburgh Sleep Quality Index: A new instrument for psychiatric practice and research. *Psychiatry Research*, *28*(2), 193–213. https://doi.org/10.1016/0165-1781(89)90047-4
+
+**Scoring.** Nine sleep-disturbance items (Sleep5_2 through Sleep5_10, corresponding to PSQI items 5b–5j) are averaged to `SLEEP_Disturbances_T1/T2` (range 0–3, where higher = more frequent disturbance). The items were administered with response codes 1–4 in Qualtrics rather than the PSQI's standard 0–3; each item is therefore recoded to (item − 1) before averaging so that the composite is on the standard PSQI 0–3 metric.
+
+**Note — partial administration of the PSQI.** The validated PSQI global score is not computed because items 6–9 (subjective sleep quality, medication use, daytime dysfunction) were not administered. Sleep duration (Sleep4) was administered as a free-text response and excluded from scoring due to inconsistent formats (e.g., "~8 hours", "around 6–7 hours", multi-sentence descriptions). The disturbances composite captures the sleep-disturbance dimension of the PSQI but should not be interpreted as a substitute for the global PSQI score; it is a partial measure of one PSQI domain.
+
+# 6. Substance use (not scored)
+
+The substance-use items require no scoring or composite and are retained in raw form for descriptive use only.
+
+# 7. Mystical Experience — Hood's M-Scale (Hood, 1975)
+
+**Source.** Hood, R. W., Jr. (1975). The construction and preliminary validation of a measure of reported mystical experience. *Journal for the Scientific Study of Religion*, *14*(1), 29–41. https://doi.org/10.2307/1384454
+
+**Three-factor source.** Hood, R. W., Morris, R. J., & Watson, P. J. (1993). Further factor analysis of Hood's Mysticism Scale. *Psychological Reports*, *73*(3, suppl.), 1176–1178. https://doi.org/10.2466/pr0.1993.73.3f.1176
+
+**Verification source.** Streib, H., Klein, C., Keller, B., & Hood, R. W. (2020). The Mysticism Scale as measure for subjective spirituality: New results with Hood's M-scale and the development of a short form. In A. L. Ai, P. Wink, & K. A. Harris (Eds.), *Assessing spirituality in a diversified world*. New York, NY: Springer.
+
+Hood's M-Scale comprises 32 items rated on a symmetric −2 to +2 metric (*definitely not true* to *definitely true* of own experience), with 0 = *cannot decide*. The administered items match the canonical M-Scale verbatim, with only trivial wording differences ("that" vs. "which") on items 1 and 2. Two factor structures are validated in the literature and computed here: the original two-factor solution from Hood (1975) and the three-factor solution from Hood, Morris, and Watson (1993).
+
+**Scoring.** Sixteen negatively-keyed items (2, 6, 7, 8, 9, 10, 14, 15, 16, 21, 24, 25, 26, 27, 28, 30) are reverse-scored by sign inversion (multiplying by −1). All factor scores are computed as item means using the already-reversed values.
+
+The **two-factor structure** (Hood, 1975) divides items into general mysticism (F1, 20 items) and religious interpretation (F2, 12 items). F1 combines what the later three-factor analysis would split into introvertive and extrovertive subscales; F2 contains the same interpretation items in both structures. The **three-factor structure** (Hood, Morris, & Watson, 1993) separates introvertive mysticism (12 items, encompassing timelessness/spacelessness, ego loss, and ineffability), extrovertive mysticism (8 items, encompassing inner subjectivity and unity), and interpretation (12 items, encompassing positive affect, sacredness, and noetic quality).
+
+# 8. Interoceptive Awareness — MAIA-2 (Mehling et al., 2018; partial administration)
+
+**Source.** Mehling, W. E., Acree, M., Stewart, A., Silas, J., & Jones, A. (2018). The Multidimensional Assessment of Interoceptive Awareness, Version 2 (MAIA-2). *PLOS ONE*, *13*(12), e0208034. https://doi.org/10.1371/journal.pone.0208034
+
+The administered version uses 7 of the 37 items from the full MAIA-2, covering 2 of its 8 subscales: Self-Regulation (4 items) and Body Listening (3 items). Items match the published MAIA-2 verbatim with one exception (item 5, where "I listen *to* information" is administered in place of the published "I listen *for* information").
+
+**Scoring.** Subscales are scored as item means (range 1–5, where higher = greater interoceptive capacity in the relevant domain). No items are reverse-scored. Self-Regulation captures the perceived ability to use body awareness to manage emotional states; Body Listening captures the tendency to actively attend to body signals for guidance.
+
+**Note — partial administration.** Only 2 of the 8 MAIA-2 subscales are scored here. Methods sections should describe the instrument as "two subscales of the MAIA-2 (Self-Regulation and Body Listening)" rather than "the MAIA-2," and should not report a total MAIA-2 score.
+
+**Note — response scale deviation.** The administered response scale is 1–5 agreement ("Strongly disagree" to "Strongly agree"), whereas the published MAIA-2 uses 0–5 frequency ("Never" to "Always") with the instruction "indicate how often each statement applies to you generally in daily life." Items are written in present-tense generalities ("I can use my breath to reduce tension"), so the agreement framing is interpretable, but this deviation changes both the metric (range 1–5 rather than 0–5; midpoint 3 rather than 2.5) and shifts the construct slightly from frequency to capability/identification. Published MAIA-2 norms and cut-points do not apply to scores computed on this metric; the subscales are interpretable in-sample but not directly comparable to results from studies using the standard frequency response format.
+
+# 9. Self-Compassion — SCS-SF (Raes et al., 2011)
+
+**Source.** Raes, F., Pommier, E., Neff, K. D., & Van Gucht, D. (2011). Construction and factorial validation of a short form of the Self-Compassion Scale. *Clinical Psychology & Psychotherapy*, *18*(3), 250–255. https://doi.org/10.1002/cpp.702
+
+The 12-item Self-Compassion Scale Short Form is scored on a 1–5 metric as six two-item subscales: Self-Kindness (items 2, 6), Self-Judgment (items 11, 12), Common Humanity (items 5, 10), Isolation (items 4, 8), Mindfulness (items 3, 7), and Over-Identification (items 1, 9). The three negatively-worded subscales — Self-Judgment, Isolation, and Over-Identification — are reverse-scored at the item level (items 1, 4, 8, 9, 11, 12), and each subscale is then an item mean. The total is the mean of the six subscale means.
+
+**Note — total over subscales.** Raes et al. (2011) constructed the short form to reproduce the long form's overall self-compassion *total* (r ≈ .97), not its facet structure, and report that the two-item subscales are too unreliable to interpret individually. The six subscale means are retained here for descriptive completeness, but `SCS_TOTAL` is the scale's primary quantity in analysis; any facet-level claims should be flagged as exploratory.
+
+# 10. Forgiveness — Heartland Forgiveness Scale (Thompson et al., 2005)
+
+**Source.** Thompson, L. Y., Snyder, C. R., Hoffman, L., Michael, S. T., Rasmussen, H. N., Billings, L. S., Heinze, L., Neufeld, J. E., Shorey, H. S., Roberts, J. C., & Roberts, D. E. (2005). Dispositional forgiveness of self, others, and situations. *Journal of Personality*, *73*(2), 313–360. https://doi.org/10.1111/j.1467-6494.2005.00311.x
+
+The 18-item HFS is scored 1–7 across three six-item subscales: Forgiveness of Self (items 1–6), of Other (items 7–12), and of Situation (items 13–18). Nine items are reverse-scored (items 2, 4, 6, 7, 9, 11, 13, 15, 17). Subscales are summed (range 6–42 each), and the total is the sum of the three subscales.
+
+**Why sums.** The HFS is published and interpreted as a sum score, so summation is retained for comparability with the source scale and its reported ranges.
+
+# 11. Empathy — Basic Empathy Scale, Adult version (Carré et al., 2013)
+
+**Source.** Carré, A., Stefaniak, N., D'Ambrosio, F., Bensalah, L., & Besche-Richard, C. (2013). The Basic Empathy Scale in Adults (BES-A): Factor structure of a revised form. *Psychological Assessment*, *25*(3), 679–691. https://doi.org/10.1037/a0032297
+
+The 20-item Basic Empathy Scale is scored on a 1–5 agreement metric. Following the adult revision, item 4 is dropped for weak loadings in both the two- and three-factor models, leaving 19 scored items. Eight negatively-worded items (1, 6, 7, 8, 13, 18, 19, 20) are reverse-scored so that higher values indicate greater empathy, and each scale is an item mean. The two-factor model comprises affective empathy (items 1, 2, 5, 7, 8, 11, 13, 15, 17, 18) and cognitive empathy (items 3, 6, 9, 10, 12, 14, 16, 19, 20); the three-factor model splits the affective items into emotional contagion (items 2, 5, 11, 15, 17) and emotional disconnection (items 1, 7, 8, 13, 18, 19), alongside cognitive empathy (items 3, 6, 9, 10, 12, 14, 16, 20). The total is the mean of the 19 retained items.
+
+**Note — item 6 reverse scoring.** Item 6 ("I find it hard to know when my friends are frightened") is reverse-scored, giving eight reverse-scored items in total. Carré et al.'s running text states "seven reversed items," but this is a typographical error contradicted by the paper's own factor solution: item 6 carries a positive loading on cognitive empathy (Table B1, Figure 2), which is only possible for a negatively-worded item if it has been reverse-keyed. Leaving item 6 un-reversed makes it point against the cognitive and total composites.
+
+# 12. Loneliness — UCLA 3-Item Loneliness Scale (Hughes et al., 2004)
+
+**Source.** Hughes, M. E., Waite, L. J., Hawkley, L. C., & Cacioppo, J. T. (2004). A short scale for measuring loneliness in large surveys: Results from two population-based studies. *Research on Aging*, *26*(6), 655–672. https://doi.org/10.1177/0164027504268574
+
+The three items — feeling a lack of companionship, feeling left out, and feeling isolated from others — capture relational connectedness, social connectedness, and self-perceived isolation. Each is scored 1–3 and the three are summed to a total ranging from 3 to 9, with no reverse scoring; scores of 3–5 are conventionally treated as "not lonely" and 6–9 as "lonely."
+
+**Note — source and anchors.** This three-item scale is Hughes et al. (2004), the short form developed for large surveys; it derives from but is not the original UCLA Loneliness Scale (Russell, Peplau, & Ferguson, 1978), which the script comment previously cited. The administered first anchor reads "Never" rather than the published "Hardly ever," and a one-month timeframe was added; both are immaterial to the 1–3 coding and scoring.
+
+# 13. Connectedness to Nature — CNS (Mayer & Frantz, 2004)
+
+**Source.** Mayer, F. S., & Frantz, C. M. (2004). The connectedness to nature scale: A measure of individuals' feeling in community with nature. *Journal of Environmental Psychology, 24*(4), 503–515. https://doi.org/10.1016/j.jenvp.2004.10.001
+
+The 14-item CNS is a single-factor measure of trait emotional connection to the natural world, rated 1 (strongly disagree) to 5 (strongly agree) for how respondents generally feel. Items 4, 12, and 14 are reverse-scored (6 − x), and the composite is the mean of all 14 items (range 1–5), with higher scores indicating greater connectedness. No subscales are computed; the source treats the scale as unidimensional.
+
+In Qualtrics the variable names for items 10 and 11 were transposed (the "common life force" item, CNS 10, was tagged NatCon_11, and the "embedded like a tree" item, CNS 11, was tagged NatCon_10); the cleaning step swaps them back to restore item-number-to-content alignment (see cleaning-decisions §7.3). This affects only item-level analyses, not the composite mean or the reverse-scored items.
+
+**Note — item 12.** Item 12 ("…a top member of a hierarchy that exists in nature") is the weakest item in the source's own factor analysis (loading .284 in Study 1, Table 1) and is dropped for a 13-item version in later work (Olivos et al., 2011). All 14 items are retained here to match the validated instrument; a 13-item variant is an available sensitivity check if in-sample item statistics flag item 12.
+
+# 14. Loneliness — De Jong Gierveld 11-item (de Jong Gierveld & Kamphuis, 1985)
+
+**Source.** de Jong Gierveld, J., & Kamphuis, F. (1985). The development of a Rasch-type loneliness scale. *Applied Psychological Measurement, 9*(3), 289–299. https://doi.org/10.1177/014662168500900307 (Dichotomous cut-off scoring follows van Tilburg & de Jong Gierveld, 1999, *Manual of the Loneliness Scale*.)
+
+The 11-item scale comprises six negatively worded items measuring emotional loneliness (items 2, 3, 5, 6, 9, 10) and five positively worded items measuring social loneliness (items 1, 4, 7, 8, 11), each rated from 1 ("Yes!") through 3 ("More or less") to 5 ("No!"). Following the validated dichotomous scoring, every item is recoded to lonely (1) or not (0): on the negatively worded emotional items a response of 3 or below counts as lonely, and on the positively worded social items a response of 3 or above counts as lonely. The neutral "More or less" midpoint therefore counts toward loneliness on both subscales. Dichotomized items are summed into Emotional loneliness (0–6), Social loneliness (0–5), and an overall total (0–11), with higher scores indicating greater loneliness.
+
+# 15. Personality — BFI-10 (Rammstedt & John, 2007)
+
+**Source.** Rammstedt, B., & John, O. P. (2007). Measuring personality in one minute or less: A 10-item short version of the Big Five Inventory in English and German. *Journal of Research in Personality, 41*(1), 203–212. https://doi.org/10.1016/j.jrp.2006.02.001
+
+The BFI-10 abbreviates the 44-item Big Five Inventory to two items per dimension, one phrased toward the high pole and one toward the low pole of each trait. Items are rated 1 (*Disagree strongly*) to 5 (*Agree strongly*).
+
+**Scoring.** Each Big Five trait is the mean of its two items after reverse scoring the low-pole item: Extraversion (items 1R, 6), Agreeableness (items 2, 7R), Conscientiousness (items 3R, 8), Neuroticism (items 4R, 9), and Openness (items 5R, 10). Reverse scoring is applied in place as 6 − *x* to items 1, 3, 4, 5, and 7. Composites are scored only for participants with both items present (`na.rm = FALSE`), consistent with the force-complete administration.
+
+# 16. Spiritual Transcendence — STS
+
+**Source.** Piedmont, R. L. (1999). Does spirituality represent the sixth factor of personality? Spiritual transcendence and the Five-Factor Model. *Journal of Personality, 67*(6), 985–1013. https://doi.org/10.1111/1467-6494.00080
+
+The 24 items were fielded under the block label "Spiritual Transcendence Scale (Piedmont, 1999)," but the administered item content does not correspond to Piedmont's published instrument. Of the 24 items, only three are verbatim Piedmont items (and they appear at re-sequenced positions: administered items 1, 9, and 10 correspond to Piedmont's items 14, 15, and 4), two more are near-matches with an added "I believe that…" stem, and the remaining nineteen are paraphrased or novel. Piedmont's actual STS items are interleaved and idiosyncratically worded (e.g., references to deceased relatives, a "peak" experience, bodily desire); none of those were administered. The administered version instead runs in three clean, sequential thematic blocks of eight (prayer/practice → strength and peace; belief in interconnection and larger meaning; responsibility, belonging, and a larger life force). The source document reproduces Piedmont's three facet *names and definitions* and carries generic "how to administer" boilerplate, but pairs them with this non-Piedmont item set. It is therefore treated as an unvalidated, adapted spiritual-transcendence measure and is **not** reported as Piedmont's validated STS; the published instrument's 9/9/6 facet keying does not apply to these items, both because the items differ and because they are sequenced in three blocks of eight rather than interleaved.
+
+**Scoring.** Items are rated 1 (*Strongly Disagree*) to 5 (*Strongly Agree*) and summed, with no reverse-scored items. Because the instrument has no external validation, the assumed subscale structure was tested directly in-sample (T1, *N* = 484) rather than assumed. Parallel analysis suggested four factors; a forced three-factor solution (oblimin) showed items 1–8 forming a single coherent Prayer Fulfillment factor (loadings ≈ .80–.90), while the intended Universality (9–16) and Connectedness (17–24) items collapsed onto one shared factor and did not separate even under oblique rotation. The instrument is accordingly scored as **two subscales plus a total**: Prayer Fulfillment (items 1–8, sum 8–40) and a combined Universality–Connectedness factor (items 9–24, sum 16–80), with Total the sum of all 24 items (24–120). Subscale internal consistency was high (α = .96 for Prayer Fulfillment, .94 for the combined factor).
+
+**Note —** The high Prayer Fulfillment α reflects content redundancy — the eight block-1 items are near-paraphrases of a single sentiment — so reliability is high but the factor is narrow. The a priori three-subscale split named in the source document (Prayer Fulfillment / Universality / Connectedness) is not retained, because Universality and Connectedness are statistically indistinguishable in these data; reporting them as separate constructs would not be defensible. Any use of this measure in analysis or write-up should describe it as an adapted, in-house spiritual-transcendence measure of uncertain provenance, not as the Spiritual Transcendence Scale (Piedmont, 1999).
+
+# 17. Indebtedness to God — ITG (Nelson et al., 2023)
+
+**Source.** Nelson, J. M., Hardy, S. A., & Watkins, P. (2023). Transcendent indebtedness to God: A new construct in the psychology of religion and spirituality. *Psychology of Religion and Spirituality, 15*(1), 105–117.
+
+Transcendent Indebtedness to God (T-ITG) measures the sense of owing God for what one has received, framed as a relational, gratitude-adjacent disposition rather than burdensome obligation. The measure was developed by exploratory factor analysis and confirmed by CFA in an independent sample as a unidimensional construct, so it is scored as a single composite with no subscales.
+
+**Scoring.** Mean of all six items, rated 1 (*Strongly disagree*) to 5 (*Strongly agree*). No reverse-scored items — all six are keyed in the same direction (higher = greater indebtedness to God). Composites are computed only for participants with all six items present (`na.rm = FALSE`).
+
+# 18. Attachment to God Scale — AGS (Rowatt & Kirkpatrick, 2002)
+
+**Source.** Rowatt, W. C., & Kirkpatrick, L. A. (2002). Two dimensions of attachment to God and their relation to affect, religiosity, and personality constructs. *Journal for the Scientific Study of Religion, 41*(4), 637–651. https://doi.org/10.1111/1468-5906.00143
+
+The AGS is a 9-item measure of attachment to God along two dimensions derived from the adult-attachment literature: Avoidance (vs. security) and Anxiety. The administered items match the published scale verbatim and in order, with item content concerning God's perceived warmth, responsiveness, interest, and consistency toward the respondent.
+
+**Scoring.** Two subscales, each a sum of its items. Avoidance comprises items 1, 2, 4, 6, 7, and 9, with the three security-worded items (1, 4, 6) reverse-scored so that higher values indicate greater avoidance; Anxiety comprises items 3, 5, and 8 with no reverse scoring. Per Rowatt and Kirkpatrick's factor analysis, the avoidance items load on one component (α = .92) and the anxiety items on a second (α = .80). Subscales are computed only for participants with all constituent items present (`na.rm = FALSE`). With the administered 5-point response scale, Avoidance ranges 6–30 and Anxiety ranges 3–15.
+
+**Note —** The published AGS uses a 7-point response scale (1 = *Strongly disagree*, 7 = *Strongly agree*); it was administered here on a 5-point scale (1–5) for participant ease, as the 7 options made it such that participants had to scroll through the options instead of having them directly in front of them. Reverse scoring is therefore computed as 6 − *x* (max = 5). This deviation does not affect within-sample or longitudinal analyses, but it means subscale sums are on a different metric than the values reported in the source paper, so absolute scores should not be compared to the published norms. Subscale sums (rather than means) were chosen to follow the original scoring method; because Avoidance and Anxiety contain different numbers of items (6 vs. 3), the two subscales are not on a common metric with each other and should not be compared directly in raw form.
+
+# 19. Daily Spiritual Experience Scale (Underwood, 2006)
+
+**Source.** Underwood, L. G. (2006). Ordinary spiritual experience: Qualitative research, interpretive guidelines, and population distribution for the Daily Spiritual Experience Scale. *Archive for the Psychology of Religion, 28*, 181–218. https://doi.org/10.1163/008467206777832562 — scoring guidance from Underwood, L. G. (2011). The Daily Spiritual Experience Scale: Overview and results. *Religions, 2*(1), 29–50. https://doi.org/10.3390/rel2010029
+
+A 16-item measure of ordinary experiences of connection with the transcendent in daily life (awe, gratitude, mercy, inner peace, compassionate love). Generally treated as unidimensional.
+
+**Scoring.** Composite is the mean of all 16 items, computed with `na.rm = FALSE` so any missing item yields `NA`. No items are reverse-scored; all run the same direction, with higher values indicating more frequent / closer experience. Items 1–15 use a 6-point frequency scale (Never → Many times a day). Item 16 uses a 4-point closeness scale and is recoded 1/3/5/6 so it spans the same 1–6 metric as the other items rather than being compressed onto 1–4; this keeps its weight in the mean comparable to the frequency items.
+
+**Note —** The 1/3/5/6 recode of item 16 is a scoring decision, not a scheme published by Underwood, who gives no numeric anchors for the closeness item. Verified against the source instrument that all 16 items run unreversed and same-direction.
+
+# 20. Revised Religious Fundamentalism Scale (Altemeyer & Hunsberger, 2004)
+
+**Source.** Altemeyer, B., & Hunsberger, B. (2004). A revised Religious Fundamentalism Scale: The short and sweet of it. *The International Journal for the Psychology of Religion, 14*(1), 47–54. https://doi.org/10.1207/s15327582ijpr1401_4
+
+A 12-item balanced measure of religious fundamentalism (6 pro-trait, 6 con-trait items).
+
+**Scoring.** Unidimensional sum of all 12 items, computed with `na.rm = FALSE`. The six con-trait items (2, 4, 7, 9, 10, 12) are reverse-scored. The original instrument uses a 9-point −4…+4 response scale; the version administered here uses a condensed 5-point −2…+2 scale. Because the scale is symmetric about 0, reversal is applied by negation (× −1) rather than a `max + min − x` reflection, which is equivalent on a zero-centered scale. Total range −24 to +24 (midpoint 0).
+
+**Note —** Scoring is kept on the signed, zero-centered metric rather than Altemeyer & Hunsberger's 1–9 recoded sum (range 12–108); the two parameterizations are linearly equivalent. Item wording is reproduced in Table 2 of the source; reverse-keying of the six con-trait items was verified against that table.
+
+# 21. LAMBI — God Representations Scale (Johnson et al., 2019)
+
+**Source.** Johnson, K. A., Okun, M. A., Cohen, A. B., Sharp, C. A., & Hook, J. N. (2019). Development and validation of the five-factor LAMBI measure of God representations. *Psychology of Religion and Spirituality, 11*(4), 339–349. https://doi.org/10.1037/rel0000207
+
+A measure of God representations along five dimensions — Limitless, Authoritarian, Mystical, Benevolent, Ineffable (LAMBI). Respondents rate how well each adjective describes "God, a Higher Power, or Divine Life Force" on a 7-point scale.
+
+**Scoring.** Each subscale is the mean of its five validated items, computed with `na.rm = FALSE`; subscale scores range 1–7. No items are reverse-scored — every adjective is keyed toward its dimension (higher = stronger endorsement). No overall LAMBI total is computed; the dimensions are distinct (ineffable runs roughly orthogonal to the others).
+
+**Note —** The instrument administered here is the full 41-adjective developmental pool from Johnson et al.'s Study 1 EFA (fielded as `GodConcept_1`–`GodConcept_41`), not the published 25-item LAMBI. Composites use the 25 CFA-validated items; the remaining 16 developmental adjectives (e.g., controlling, judging, caring, transcendent, supreme) are retained in the dataset but unused. One pool item deviates from the source: position 33 was administered as "Omnipresent" rather than the paper's "Om" — a non-final item in both cases, so no effect on the composites. The authors' published syntax uses SPSS `mean.3` (compute when at least 3 of 5 items are present); this pipeline uses `na.rm = FALSE` per house rule, which returns identical composites here since missingness is whole-scale (T2 non-return).

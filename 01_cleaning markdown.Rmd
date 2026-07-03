@@ -1,0 +1,192 @@
+---
+title: "Hesychastic Prayer RCT — Cleaning Decisions"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: united
+  pdf_document:
+    toc: true
+---
+
+This document records the methodological decisions made in the data cleaning portion (`01_cleaning.R`) of the Hesychastic Prayer RCT pipeline.
+
+Created by Morgan Healey (morgan_healey@alumni.brown.edu)
+
+# 0. Configuration and reproducibility
+
+The script opens with a configuration block holding the input file paths, all defined relative to the project root via `here()`.  
+
+# 1. Participant ID handling
+
+## 1.1 Removal of missing participant IDs
+
+Rows where `participantId` is `NA` after normalization are dropped from intake before any other processing.
+
+**Why.** A participant without a valid ID cannot be linked to either (a) the condition assignment files produced by the randomization service, or (b) their T2 outtake row in the merge step downstream.
+
+## 1.2 Handling of duplicate participant IDs
+
+If a `participantId` appears in more than one row of intake, the first occurrence is kept (`group_by(participantId) |> slice(1)`) and the remainder dropped.
+
+**Why first occurrence.** Qualtrics records responses in temporal order, and the earliest row is most likely to reflect the participant's intended initial submission. Later rows typically represent browser reloads or accidental resubmissions of an in-progress response.
+
+**Alternatives considered.** Keeping the most recently submitted row was rejected because there is no audit trail to confirm whether a later submission represents corrected data or accidental duplication. Keeping the most-complete row was rejected because Qualtrics's force-complete setting means every submitted row is fully answered, so completeness does not discriminate between rows.
+
+**Reporting.** The number of duplicate rows removed and the number of unique participants affected are both reported to the console.
+
+# 2. Eligibility screening
+
+## 2.1 Eligibility criteria
+
+Participants are required to satisfy five criteria, applied in order:
+
+1. **Age >= 18** (`AGET1 >= 18`)
+2. **Christian self-identification** (`CHRISTIANIDT1 == 1`)
+3. **Attention check passed** (`AC1_ == 1`)
+4. **God screen passed** (`God_Screen_ == 1`)
+5. **Survey completion** (`Progress == 100`)
+
+Criteria 1-4 are eligibility checks defined by the study protocol: the trial requires Christian adults who believe in God and who attended to the survey items. Criterion 5 is a data completeness filter.
+
+At each individual criterion filter (1 through 4), only participants who explicitly fail are removed. Participants with `NA` on the criterion variable are kept in the pool. All remaining incompletes are then removed in a single final step at the survey completion filter.
+
+**Why.** The intake survey uses skip logic — for example, a participant who answers "No" to the Christian identification question is routed past subsequent religious items, leaving those items `NA`. If `NA`s were removed at every filter, per-criterion exclusion counts would conflate "explicitly failed this criterion" with "never reached this question because they were screened out earlier." Keeping `NA`s until the end ensures that each criterion's exclusion count reflects only participants who actively failed that criterion, while the completion filter sweeps up everyone with incomplete surveys regardless of their route through the survey.
+
+**Reporting.** For each criterion, the script reports the count of Pass, Fail, and Missing values before applying the filter, plus the count removed and remaining after. This produces a complete per-criterion audit trail.
+
+# 3. Condition assignment
+
+## 3.1 Handling participants with duplicate condition assignments
+
+If a participant ID appears in more than one of the three condition assignment files (Control, HPrayer, LovingKindness), all rows for that participant are removed from the assignment table before merging.
+
+**Why.** A duplicate assignment indicates a randomization-service error: the participant should have been routed into exactly one condition. Without an audit trail to identify which assignment reflects the true intended condition, retaining either would risk attributing outcomes to the wrong arm. Dropping the participant entirely preserves the integrity of the condition-to-outcome link.
+
+**Alternative considered.** Keeping the first-listed assignment (or a randomly chosen one) was rejected because the row order in the CSV exports has no defensible relationship to the participant's true condition; choosing one would be arbitrary, and arbitrary assignment to a treatment arm is the failure mode the trial is designed to avoid.
+
+**Reporting.** The script prints the duplicate rows before dropping them, plus the count of unique participants removed and the resulting N in `all_conditions`.
+
+## 3.2 Handling eligible participants without a condition assignment
+
+After left-joining the condition assignment table to the eligible intake sample, participants whose `Condition` is `NA` (i.e., they were not present in any condition CSV) are removed from the analyzable sample.
+
+**Why.** The randomization service produces dated snapshots of the assignment table. Participants who completed intake between the latest randomization snapshot and the data export have not yet been randomized to a condition and cannot be analyzed under the trial's three-arm design. Excluding them preserves the alignment between intake completion and randomization status.
+
+**Alternative considered.** Retaining unassigned participants in a separate "unassigned" group was rejected because the trial protocol specifies three pre-defined conditions, and an unassigned group has no protocol-defined treatment to compare against. Folding them into a single condition was also rejected — that would be non-random assignment, the failure mode randomization exists to prevent.
+
+**Reporting.** The script prints the IDs of unassigned participants, the count removed, and the final eligible sample size. A breakdown by condition is then printed via `table(eligible$Condition)`.
+
+# 4. T1/T2 merge
+
+Outtake participant IDs are normalized and deduplicated using the same rules described in §1.1 and §1.2.
+
+## 4.1 Choice of join type: left-join on `participantId`
+
+The eligible intake sample is joined to the outtake sample using a left-join keyed on `participantId`. All eligible T1 participants are retained, including those who did not complete T2; their T2 columns are filled with `NA`.
+
+**Why.** A left-join preserves the full T1-eligible sample as the analytic spine, which is required for any analysis that uses T1-only data (e.g., baseline descriptives) or that handles T2 attrition explicitly (e.g., mixed models, intention-to-treat with missing-data treatment). Filtering T2 non-completers at the merge stage would conflate the analytic decision "exclude T2 incompletes" with the data-management step "join T1 and T2," and would silently strip T1-only data from analyses that don't require T2.
+
+**Alternative considered.** An inner join (keeping only participants present in both T1 and T2) was rejected because it forces a complete-cases analysis on every downstream computation. T2 completion is a meaningful outcome in its own right (attrition is reported separately), and excluding T2 non-completers should be a deliberate choice in each analysis, not a side-effect of the merge.
+
+**Naming convention.** When T1 and T2 share a column name (e.g., `BDI_1`, `Progress`, `Finished`), the join uses `suffix = c("", ".y")` so T1 columns retain their original name and T2 columns receive a `.y` suffix. Downstream code in sections 6 and 7 relies on this convention: any variable matching `variable.y` refers to a T2 measurement.
+
+# 5. T2 return rates
+
+## 5.1 Definition of T2 return
+
+A participant is counted as having returned for T2 if they have any T2 row in the joined dataset (`!is.na(Progress.y)`). This includes participants who started but did not finish T2; the script's console output labels this as "Started (T2)."
+
+**Why.** This section reports a pre-QC engagement measure: how many T1 participants returned to the outtake survey at all, regardless of completion status. Attrition and QC are treated as separate constructs — this step captures *return behavior* (did they come back?), while the stricter completion filter (`Finished.y == 1`) is applied later in §6.1 as part of QC. Reporting return separately makes it possible to distinguish two reasons someone might be missing from the final analytic sample: they never returned for T2, or they returned but their data failed QC.
+
+**Reporting.** The script reports overall return counts and per-condition return rates (computed as participants who started T2 / participants randomized to that condition).
+
+# 6. Quality control
+
+Quality control filters are applied to the merged T1/T2 dataset via a list-driven loop. Each filter follows the same "remove explicit fails, keep `NA`s" pattern established in §2.2.
+
+## 6.1 QC checks applied
+
+The full set of filters, applied in this order:
+
+1. **Survey completion** — `Finished == 1` at T1 and `Finished.y == 1` at T2
+2. **Duplicate detection** — three indicators at each timepoint: `Q_RelevantIDDuplicate`, `Q_DuplicateRespondent`, and `Q_RelevantIDDuplicateScore == 100`
+3. **Response duration** — minimum 600 seconds at each timepoint
+4. **Ballot-box-stuffing detection** — `Q_BallotBoxStuffing` at each timepoint
+5. **T2 attention check** — `AC1_.y == 1` (the T1 attention check is already applied in eligibility screening)
+
+These filters cover three families of data-quality concern: survey completion (the response is usable at all), automated or duplicate responding (Qualtrics' duplicate-detection indicators), and attentive engagement (response duration and the attention check).
+
+## 6.2 Fraud score (RelevantID) — deliberately not used
+
+A RelevantID fraud-score filter (`Q_RelevantIDFraudScore`) is **intentionally not applied**, and the variable is dropped from the analytic dataset (§7.1). This is a deliberate, documented decision rather than an omission, for several converging reasons:
+
+- **Qualtrics deprecated RelevantID on 30 June 2025** and states in its own documentation that the RelevantID fields — including `Q_RelevantIDFraudScore` — should be ignored, as the feature is no longer supported. Data collection for this study overlapped this cutover.
+- **There is no Qualtrics-documented threshold** for the fraud score. A commonly cited researcher convention is to exclude scores >= 30, but this figure does not appear in official Qualtrics guidance, and the score's provider (Imperium) has described the fraud metric as unreliable while noting that the duplicate score works well.
+
+
+Qualtrics' own recommended replacement for RelevantID is duplicate detection via `Q_DuplicateRespondent`, used in parallel with the legacy `Q_RelevantIDDuplicate`. The QC pipeline (§6.1) implements exactly this either/or duplicate-detection pattern, so automated-response screening rests on Qualtrics' current recommended method rather than the deprecated fraud score. 
+
+## 6.3 Removal at either timepoint disqualifies a participant
+
+If a participant fails QC at T1, T2, or both, they are removed from the analytic sample. There is no asymmetric treatment of T1- vs T2-only failures.
+
+**Why.** A QC flag at either timepoint suggests the participant's data at that timepoint may not reflect a single attentive respondent. Longitudinal analyses depend on both timepoints being trustworthy, and retaining a participant with valid T1 but flagged T2 (or vice versa) would either introduce unreliable values into mixed-timepoint analyses or require complex case-by-case decisions about which timepoints to use. Uniform removal is simpler and more conservative.
+
+**Alternative considered.** Removing only the affected timepoint (e.g., setting all T2 values to `NA` for a participant with flagged T2) was rejected because the analytic pipeline anchors on per-participant rows rather than per-timepoint observations, and because the QC flag itself indicates the response at that timepoint may not come from a single coherent respondent.
+
+## 6.4 Specific QC thresholds
+
+The two numeric thresholds applied:
+
+- **Response duration >= 600 seconds**: roughly 10 minutes, a reasonable lower bound for thoughtful completion of a survey of this length. Faster responses are unlikely to reflect attentive reading.
+- **Qualtrics duplicate score = 100**: indicates exact-match duplication only. Participants flagged at lower duplicate scores are retained, on the assumption that partial-match flags are less reliable indicators of true duplication.
+
+**Reporting.** For each QC check, the script prints the count of participants removed and the running N. Final per-condition counts are printed via `table(merged_data$Condition)`.
+
+# 7. Column standardization
+
+After QC, columns are renamed for downstream consistency. Most renames are cosmetic and follow the convention `Variable_ItemNumber_Timepoint` (e.g., `BDI_1_T1`). The methodological decisions are limited to administrative-column drops and a few item-renumbering corrections required for correct downstream scoring.
+
+## 7.1 Dropping of merge artifacts, administrative columns, and spent QC flags
+
+The following column groups are dropped after QC is complete:
+
+1. All `.y`-suffixed merge duplicates (T2 versions of admin variables not needed post-QC). Note that this step removes the T2 versions of the QC flag variables as a side effect.
+2. Identifying information not needed for analysis: `RecipientLastName`, `RecipientFirstName`, `RecipientEmail`, `IPAddress`, `LocationLatitude`, `LocationLongitude`, `ResponseId`, `ExternalReference`, `DistributionChannel`, `UserLanguage`.
+3. Qualtrics metadata: `Welcome`, `Q_RelevantIDLastStartDate`.
+4. Spent QC flag variables (T1 versions), now inert because QC is complete: `Q_RelevantIDDuplicate`, `Q_RelevantIDDuplicateScore`, `Q_RelevantIDFraudScore`, `Q_DuplicateRespondent`, `Q_BallotBoxStuffing`.
+
+**Why.** Identifying information (names, emails, IP, geolocation) is dropped after participantId-based linkage is complete because it serves no analytic purpose and constitutes PII that should not persist in the analytic dataset. Qualtrics admin metadata and the QC flag variables are dropped because the decisions that depended on them have already been applied; carrying them forward only invites a downstream user to mistakenly analyze or filter on them. The deprecated `Q_RelevantIDFraudScore` is dropped here for the same reason (see §6.2). The raw source SAV files retain all of these variables untouched, so any decision can still be revisited from source if needed.
+
+## 7.2 Empathy item renumbering
+
+In the Qualtrics survey, the BES Empathy items were numbered 1, then 3 through 21 (item 2 was skipped during survey construction). Items 3-21 are renamed to 2-20 to restore contiguous numbering compatible with the canonical Basic Empathy Scale.
+
+**Why.** The composite-creation script (`02_create_composites.R`) references items by their canonical numbers from Carré et al. (2013). Without renaming, scoring would either fail to find items or pull from incorrect positions, producing invalid subscale scores.
+
+## 7.3 Nature Connectedness item swap
+
+NatCon items 10 and 11 were administered in swapped order in Qualtrics relative to the published scale. They are exchanged here so that item 10 in the data matches item 10 in Mayer & Frantz (2004), and likewise for item 11.
+
+**Why.** Without correction, the reverse-scored item would be applied to the wrong content during composite scoring, producing incorrect Connectedness to Nature scores.
+
+## 7.4 DSES item 16 renumbering
+
+The 16th DSES item was labeled `T1spir2.0` (and `T2spir2.0`) in Qualtrics, presumably because it uses a non-sequential response coding (1/3/5/6 rather than 1-6). It is renamed to `DSES_16_T1` and `DSES_16_T2` to match the canonical 16-item structure of the Daily Spiritual Experience Scale (Underwood, 2006).
+
+**Why.** The composite-creation script expects DSES items numbered 1 through 16. Without renaming, item 16 would not be included in the DSES total score.
+
+# 8. Final dataset preparation
+
+## 8.1 Condition factor levels
+
+`Condition` is converted to a factor with explicit level order `c("Control", "HPrayer", "LovingKindness")`.
+
+
+## 8.2 Saved outputs
+
+The cleaned dataset is saved in two formats: RDS (`1_cleaned_hp_dataR.rds`) and XLSX (`1_cleaned_hp_dataR.xlsx`).
+
+**Why.** RDS preserves R object structure including factor levels and column attributes (variable labels carried over from `haven::read_sav()`) for downstream scripts. XLSX is provided for inspection and sharing with collaborators who do not use R; it does not preserve attributes but is human-readable.
