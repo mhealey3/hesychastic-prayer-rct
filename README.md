@@ -9,7 +9,7 @@ twelve weekly check-ins (T1a–T6b) for the two active arms.
 participant data.** Data is stored separately (see "Getting the data" below).
 
 **Attribution.** Data collection, cleaning, scoring, and compilation were carried
-out by Morgan Healey (morgan_healey@alumni.brown.edu) under the supervision of PI
+out by Morgan Healey (mrhealey@bwh.harvard.edu OR morgan_healey@alumni.brown.edu) under the supervision of PI
 Michael Ferguson (mferguson@bwh.harvard.edu). Any use of this work or the
 associated data must cite them accordingly.
 
@@ -61,7 +61,7 @@ their file paths (which resolve via here()).
 | Condition assignment CSVs (Control, HP, LK) | Group assignments/ |
 
 The administered survey instruments (e.g. the official intake questionnaire) are
-in the Dropbox; they are the ground-truth reference for verifying scale scoring
+in the Dropbox; they are the reference for verifying scale scoring
 against what participants actually saw.
 
 After the data folders are populated, open Hesychastic Prayer.Rproj in RStudio
@@ -89,16 +89,38 @@ The scripts must be run in order — each depends on the previous one's output.
    composite dataset. It produces the weekly affect composites, a participant-
    level wide table, the attrition/participation matrix, and a per-participant
    adherence measure joined to the outcome data. Outputs:
-   - 03_outcomes_with_adherence.rds — the scored outcomes plus per-participant
-     adherence, in one analysis-ready table
-   - weekly_wide.rds — one row per participant, each week's measures as columns
-   - attrition_matrix.rds — weekly completion (1/0) per participant per week
-   - weekly_scored.rds — the per-week scored tables (a list)
-
-**Figure generation (run last):** flow_diagram.R produces the CONSORT flow
+   - **03_outcomes_with_adherence.rds / .csv** — the primary analysis-ready
+     table: the full cleaned sample (N = 484) with the scored T1/T2 outcome
+     composites plus each participant's weekly adherence (weeks_completed and
+     pct_completed). Adherence is 0 for treatment participants who completed no
+     weekly practice and NA for Control (who were never assigned the practice).
+   - **weekly_wide.rds** — one row per weekly participant (N = 379), with each
+     week's affect composites and a-session content as separate columns tagged
+     by timepoint (e.g. PRE_PA_T2b = pre-practice positive affect at week 2b).
+     For cross-week / participant-level analysis.
+   - **attrition_matrix.rds / .csv** — one row per enrolled treatment
+     participant (N = 387), one column per timepoint (T1a–T6b), each cell 1 if
+     the participant completed that week's practice, else 0. Never-starters and
+     non-completers appear as 0. This is the participation record behind the
+     attrition curve and the adherence measure.
+   - **weekly_scored.rds** — the 24 per-week tables (one per timepoint × arm),
+     each with its raw items and scored affect composites. Stored as an R list,
+     accessed by name (e.g. weekly_scored[["T2b-HP"]]). For per-week or
+     item-level analysis.
+**Figure generation (run last):** flow_diagram.R produces a CONSORT flow
 diagram. It reads outputs from *both* 01_cleaning.R (flow_counts.rds) and
 03_weekly_processing.R (attrition_matrix.rds), so run it after scripts 1–3.
 Output: Diagrams/consort_flow.pdf and .png.
+   
+
+   **File formats.** The .rds files can only be opened in R
+   (readRDS(here("Outputs", "weekly_wide.rds"))); they are not spreadsheets and
+   will not open in Excel. weekly_scored is provided only as
+   .rds because they preserve R-specific structure (haven value labels, and
+   weekly_scored is a list of tables). The outputs that also have a .csv version
+   open in any spreadsheet program, but .csv does not preserve value labels.
+
+
 
 Each pipeline script has a companion decisions document in Documentation/
 recording the methodological choices and their rationale.
